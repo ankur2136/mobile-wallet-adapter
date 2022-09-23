@@ -21,4 +21,6 @@ import java.util.List;
     List<AuthRecord> getAuthorizations(@NonNull IdentityRecord identityRecord);
 
     AuthRecord getAuthorization(@NonNull IdentityRecord identityRecord, @NonNull String tokenIdStr);
+
+    int purgeOldestEntries(@IntRange(from = 1) int identityId, @IntRange(from = 1) int maxOutstandingTokensPerIdentity);
 }
