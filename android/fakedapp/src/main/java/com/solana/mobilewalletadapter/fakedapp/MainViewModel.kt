@@ -147,11 +147,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             GetLatestBlockhashUseCase(TESTNET_RPC_URI)
         }
 
-        val authorized = localAssociateAndExecute(sender) { client ->
+        localAssociateAndExecute(sender) { client ->
             doAuthorize(client)
         }
+        cond = true
 
-        Log.e(TAG, "before lock await")
         withContext(Dispatchers.IO) {
             lock.withLock {
                 while(cond) {
@@ -159,10 +159,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 }
             }
         }
-        Log.e(TAG, "After lock await -- Authorized = ${uiState.value.authToken}")
 
         val signedTransactions = localAssociateAndExecute(sender) { client ->
-            if (authorized == false) {
+            val authorized = doReauthorize(client)
+            if (!authorized) {
                 return@localAssociateAndExecute null
             }
             val (blockhash, _) = try {
