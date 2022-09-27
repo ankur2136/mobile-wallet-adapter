@@ -32,6 +32,8 @@ import java.util.concurrent.CancellationException
 import java.util.concurrent.ExecutionException
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.TimeoutException
+import java.util.concurrent.locks.ReentrantLock
+import kotlin.concurrent.withLock
 import kotlin.random.Random
 
 class MainViewModel(application: Application) : AndroidViewModel(application) {
@@ -39,6 +41,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val uiState = _uiState.asStateFlow()
 
     private val mobileWalletAdapterClientSem = Semaphore(1) // allow only a single MWA connection at a time
+
+    private val lock = ReentrantLock()
+    private val condition = lock.newCondition()
 
     private var isWalletEndpointAvailable = false
 
@@ -135,14 +140,29 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    @Volatile
+    private var cond = true
     fun authorizeAndSignTransactions(sender: StartActivityForResultSender) = viewModelScope.launch {
         val latestBlockhash = viewModelScope.async(Dispatchers.IO) {
             GetLatestBlockhashUseCase(TESTNET_RPC_URI)
         }
 
+        val authorized = localAssociateAndExecute(sender) { client ->
+            doAuthorize(client)
+        }
+
+        Log.e(TAG, "before lock await")
+        withContext(Dispatchers.IO) {
+            lock.withLock {
+                while(cond) {
+                    condition.awaitUninterruptibly()
+                }
+            }
+        }
+        Log.e(TAG, "After lock await -- Authorized = ${uiState.value.authToken}")
+
         val signedTransactions = localAssociateAndExecute(sender) { client ->
-            val authorized = doAuthorize(client)
-            if (!authorized) {
+            if (authorized == false) {
                 return@localAssociateAndExecute null
             }
             val (blockhash, _) = try {
@@ -363,7 +383,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         var capabilities: MobileWalletAdapterClient.GetCapabilitiesResult? = null
 
         try {
-            val result = client.getCapabilities().get()
+            val result = client.capabilities.get()
             Log.d(TAG, "Capabilities: $result")
             capabilities = result
         } catch (e: ExecutionException) {
@@ -503,6 +523,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         return signatures
     }
 
+    private fun releaseLock() {
+        lock.withLock {
+            cond = false
+            condition.signal()
+        }
+    }
+
     private suspend fun <T> localAssociateAndExecute(
         sender: StartActivityForResultSender,
         uriPrefix: Uri? = null,
@@ -518,6 +545,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             )
             try {
                 sender.startActivityForResult(associationIntent) {
+                    releaseLock()
                     viewModelScope.launch {
                         // Ensure this coroutine will wrap up in a timely fashion when the launched
                         // activity completes
