@@ -7,7 +7,6 @@ package com.solana.mobilewalletadapter.fakewallet
 import android.app.Application
 import android.content.Intent
 import android.net.Uri
-import android.util.Base64
 import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
@@ -33,7 +32,12 @@ class MobileWalletAdapterViewModel(application: Application) : AndroidViewModel(
         _mobileWalletAdapterServiceEvents.asSharedFlow() // expose as event stream, rather than a stateful object
 
     private var clientTrustUseCase: ClientTrustUseCase? = null
-    private var scenario: LocalScenario? = null
+    private var scenario: Scenario? = null
+
+    fun isConnectionRemote(): Boolean = scenario is RemoteWebSocketServerScenario
+    fun endSession() {
+        scenario?.close()
+    }
 
     fun processLaunch(intent: Intent?, callingPackage: String?): Boolean {
         if (intent == null) {
@@ -48,9 +52,6 @@ class MobileWalletAdapterViewModel(application: Application) : AndroidViewModel(
         if (associationUri == null) {
             Log.e(TAG, "Unsupported association URI '${intent.data}'")
             return false
-        } else if (associationUri !is LocalAssociationUri) {
-            Log.w(TAG, "Current implementation of fakewallet does not support remote clients")
-            return false
         }
 
         clientTrustUseCase = ClientTrustUseCase(
@@ -60,7 +61,8 @@ class MobileWalletAdapterViewModel(application: Application) : AndroidViewModel(
             associationUri
         )
 
-        scenario = if (BuildConfig.PROTOCOL_VERSION == SessionProperties.ProtocolVersion.LEGACY) {
+        scenario = if (BuildConfig.PROTOCOL_VERSION == SessionProperties.ProtocolVersion.LEGACY
+            && associationUri is LocalAssociationUri) {
             // manually create the scenario here so we can override the association protocol version
             // this forces ProtocolVersion.LEGACY to simulate a wallet using walletlib 1.x (for testing)
             LocalWebSocketServerScenario(
@@ -163,8 +165,7 @@ class MobileWalletAdapterViewModel(application: Application) : AndroidViewModel(
                 val publicKey = keypair.public as Ed25519PublicKeyParameters
                 Log.d(TAG, "Generated a new keypair (pub=${publicKey.encoded.contentToString()}) for authorize request")
 
-                val address = Base64.encodeToString(publicKey.encoded, Base64.NO_WRAP)
-                val siwsMessage = request.signInPayload.prepareMessage(address)
+                val siwsMessage = request.signInPayload.prepareMessage(publicKey.encoded)
                 val signResult = try {
                     val messageBytes = siwsMessage.encodeToByteArray()
                     SolanaSigningUseCase.signMessage(messageBytes, listOf(keypair))
@@ -178,7 +179,7 @@ class MobileWalletAdapterViewModel(application: Application) : AndroidViewModel(
                     siwsMessage.encodeToByteArray(), signResult.signature, "ed25519")
 
                 val account = buildAccount(publicKey.encoded, "fakewallet")
-                request.request.completeWithAuthorize(account, null,
+                request.request.completeWithAuthorize(arrayOf(account), null,
                     request.sourceVerificationState.authorizationScope.encodeToByteArray(), signInResult)
             } else {
                 request.request.completeWithDecline()

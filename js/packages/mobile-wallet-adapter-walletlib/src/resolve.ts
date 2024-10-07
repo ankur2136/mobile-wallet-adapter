@@ -44,7 +44,7 @@ export type SignInPayload = Readonly<{
     notBefore?: string;
     requestId?: string;
     resources?: readonly string[];
-}>
+}>;
 
 export type Base64EncodedAddress = string;
 type Base64EncodedSignedMessage = string;
@@ -88,7 +88,7 @@ export type AuthorizeDappRequest = Readonly<{
     chain: string;
     appIdentity?: AppIdentity;
     features?: IdentifierArray;
-    addresses?: [String];
+    addresses?: [string];
     signInPayload?: SignInPayload;
 }> &
     IMWARequest;
@@ -170,7 +170,7 @@ export type InvalidSignaturesResponse = Readonly<{
 
 /* Authorize Dapp */
 export type AuthorizedAccount = Readonly<{
-    publicKey: Base64EncodedAddress;
+    publicKey: Uint8Array;
     accountLabel?: string;
     icon?: string;
     chains?: IdentifierArray;
@@ -183,7 +183,7 @@ export type SignInResult = Readonly<{
     signature_type?: string;
 }>;
 export type AuthorizeDappCompleteResponse = Readonly<{
-    accounts: Array<AuthorizedAccount>
+    accounts: Array<AuthorizedAccount>;
     walletUriBase?: string;
     authorizationScope?: Uint8Array;
     signInResult?: SignInResult;

@@ -410,9 +410,9 @@ public class AuthRepositoryImpl implements AuthRepository {
             // If no matching account exists, create one
             if (accountRecordQueried == null) {
                 accountId = (int) mAccountsDao.insert(authRecordId, account.publicKey,
-                        account.accountLabel, account.icon, account.chains, account.features);
+                        account.accountLabel, account.accountIcon, account.chains, account.features);
                 accountRecord = new AccountRecord(accountId, authRecordId, account.publicKey,
-                        account.accountLabel, account.icon, account.chains, account.features);
+                        account.accountLabel, account.accountIcon, account.chains, account.features);
             } else {
                 accountRecord = accountRecordQueried;
             }
@@ -444,6 +444,7 @@ public class AuthRepositoryImpl implements AuthRepository {
         } else {
             final int id = (int) mAuthorizationsDao.insert(authRecord.identity.getId(), now,
                     authRecord.chain, authRecord.walletUriBaseId, authRecord.scope);
+            mAccountsDao.updateParentId(authRecord.id, id);
             reissued = new AuthRecord(id, authRecord.identity, authRecord.accounts,
                     authRecord.chain, authRecord.scope, authRecord.walletUriBase,
                     authRecord.walletUriBaseId, now,
